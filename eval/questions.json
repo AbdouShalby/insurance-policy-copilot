@@ -1,0 +1,21 @@
+[
+  { "question": "What is the collision deductible?", "expected_doc_id": "motor", "expected_page": 1 },
+  { "question": "What is the windscreen repairs limit?", "expected_doc_id": "motor", "expected_page": 1 },
+  { "question": "What report do theft claims require?", "expected_doc_id": "motor", "expected_page": 1 },
+  { "question": "How far does towing assistance extend?", "expected_doc_id": "motor", "expected_page": 1 },
+  { "question": "What is the inpatient hospital treatment limit?", "expected_doc_id": "medical", "expected_page": 1 },
+  { "question": "When do planned hospital admissions require pre-authorisation?", "expected_doc_id": "medical", "expected_page": 1 },
+  { "question": "What is the dental treatment limit?", "expected_doc_id": "medical", "expected_page": 1 },
+  { "question": "What is the maternity waiting period?", "expected_doc_id": "medical", "expected_page": 1 },
+  { "question": "What is the maximum duration of trips?", "expected_doc_id": "travel", "expected_page": 1 },
+  { "question": "What baggage delay qualifies for essential purchases?", "expected_doc_id": "travel", "expected_page": 1 },
+  { "question": "Is visa refusal covered?", "expected_doc_id": "travel", "expected_page": 1 },
+  { "question": "How many nights of alternative accommodation are reimbursed?", "expected_doc_id": "home", "expected_page": 1 },
+  { "question": "What is the jewellery limit?", "expected_doc_id": "home", "expected_page": 1 },
+  { "question": "What is the deductible for water leakage?", "expected_doc_id": "home", "expected_page": 1 },
+  { "question": "ما الحد الأقصى لجلسات العلاج الطبيعي؟", "expected_doc_id": "medical-ar", "expected_page": 1 },
+  { "question": "ما تغطية النظارات الطبية؟", "expected_doc_id": "medical-ar", "expected_page": 1 },
+  { "question": "ما مهلة تقديم المطالبة الطبية؟", "expected_doc_id": "medical-ar", "expected_page": 1 },
+  { "question": "Are cryptocurrency mining rigs insured?", "expected_doc_id": null },
+  { "question": "What benefits exist for lunar tourism?", "expected_doc_id": null }
+]

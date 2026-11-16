@@ -1,0 +1,68 @@
+import MiniSearch from 'minisearch';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { Chunk } from './types';
+
+export function tokenize(text: string): string[] {
+  return text.toLowerCase().normalize('NFKC').replace(/[\u064b-\u065f\u0670]/g, '')
+    .replace(/[أإآ]/g, 'ا').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+
+const STOP_WORDS = new Set(('a an the is are does do what how when where which can i my me ' +
+  'for of to in on and or policy document documents please tell about ' +
+  'ما هل في من عن على هو هي كم ماذا وثيقة الوثيقة').split(' '));
+
+export function contentTerms(text: string): string[] {
+  return [...new Set(tokenize(text).filter(term => !STOP_WORDS.has(term)))];
+}
+
+export class IndexStore {
+  private index = this.createIndex();
+  private chunks: Chunk[] = [];
+  private writes: Promise<void> = Promise.resolve();
+
+  constructor(private readonly path: string) {}
+
+  private createIndex(): MiniSearch<Chunk> {
+    return new MiniSearch<Chunk>({ idField: 'chunk_id', fields: ['text', 'title'],
+      storeFields: ['doc_id', 'title', 'page', 'chunk_id', 'text', 'lang'], tokenize });
+  }
+
+  async load(): Promise<void> {
+    try {
+      const saved = JSON.parse(await readFile(this.path, 'utf8')) as { chunks: Chunk[] };
+      this.index.addAll(saved.chunks);
+      this.chunks = saved.chunks;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+
+  async replace(docId: string, chunks: Chunk[]): Promise<void> {
+    const work = this.writes.then(async () => {
+      const next = this.chunks.filter(chunk => chunk.doc_id !== docId).concat(chunks);
+      const nextIndex = this.createIndex();
+      nextIndex.addAll(next);
+      await mkdir(dirname(this.path), { recursive: true });
+      // Publish to memory only after an atomic on-disk replacement succeeds.
+      await writeFile(`${this.path}.tmp`, JSON.stringify({ version: 1, chunks: next }), 'utf8');
+      await rename(`${this.path}.tmp`, this.path);
+      this.chunks = next;
+      this.index = nextIndex;
+    });
+    this.writes = work.catch(() => undefined);
+    return work;
+  }
+
+  search(question: string, topK: number): Chunk[] {
+    const terms = contentTerms(question);
+    if (!terms.length) return [];
+    return this.index.search(terms.join(' '), { prefix: false, fuzzy: false, combineWith: 'OR' })
+      .filter(result => {
+        const sourceTerms = new Set(tokenize(`${result.title} ${result.text}`));
+        return result.score >= 0.2 && terms.filter(term => sourceTerms.has(term)).length >= Math.ceil(terms.length / 2);
+      })
+      .slice(0, topK).map(result => ({ doc_id: result.doc_id, title: result.title,
+        page: result.page, chunk_id: result.chunk_id, text: result.text, lang: result.lang }));
+  }
+}
