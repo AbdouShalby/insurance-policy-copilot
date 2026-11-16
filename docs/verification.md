@@ -57,3 +57,7 @@ Run by the lead in headless Chromium against a local build (API on 13101, ingest
 - Phone 390px: Arabic question "كم نسبة تحمل الكشف الطبي؟" returned the Arabic medical policy (page 1) rendered right-to-left. No console errors, no horizontal scroll.
 - Fix applied during the check: the answer block direction now follows the answer text only, so an English "not found" message is no longer rendered right-to-left after an Arabic question.
 - Fixed after the check: extractive answers no longer start with the markdown heading and repeated title of the source chunk (`readableText`, covered by tests).
+
+## LLM mode check (2026-11-16)
+
+Local run with a real `ANTHROPIC_API_KEY` from `apps/api/.env` (key never printed or committed): English and Arabic questions returned `mode: llm` answers grounded in the cited chunk (`motor:p1:c1`, `medical-ar:p1:c1`); an out-of-scope question returned the not-found answer without calling the model. Tests and CI keep the adapter mocked.

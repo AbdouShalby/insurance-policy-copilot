@@ -97,6 +97,18 @@ All API paths are relative to the API working directory unless absolute. The ing
 | `ANTHROPIC_API_KEY` | Unset | Enables optional paid LLM adapter only when explicitly set |
 | `INGEST_PORT` | `8001` | Bash launcher only; PowerShell uses `-IngestPort` |
 
+`npm start` in `apps/api` loads `apps/api/.env` when present (`node --env-file-if-exists`). Copy `.env.example` to `.env` for local settings; `.env` is git-ignored, so keys never leave the machine.
+
+### LLM mode (optional)
+
+Set `ANTHROPIC_API_KEY` in `apps/api/.env` to answer with Claude (`claude-sonnet-5-5`) instead of extractive snippets. The model only sees the retrieved excerpts, treats them as data, and must cite every statement with `[chunk_id]`. Questions with no retrieved excerpts never reach the model and return "Not found in the policy documents." Example outputs from a local run on 2026-11-16:
+
+| Question | Mode | Answer (abridged) |
+|---|---|---|
+| What is the excess for windscreen damage? | llm | Windscreen repairs are covered up to EGP 5000 per policy year without a deductible [motor:p1:c1]; notes that the document says "deductible", not "excess". |
+| كم نسبة تحمل الكشف الطبي؟ | llm | نسبة تحمل الكشف الطبي هي ١٥ بالمائة من قيمة الزيارة داخل الشبكة الطبية [medical-ar:p1:c1]. |
+| Does the travel policy cover space tourism flights? | extractive | Not found in the policy documents. |
+
 ## Tests and evaluation
 
 From the repository root, PowerShell:
