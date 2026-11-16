@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { ArgumentsHost, BadRequestException, Body, Catch, Controller, ExceptionFilter,
-  ExecutionContext, Get, HttpCode, HttpException, HttpStatus, Injectable, Module, Post,
+  ExecutionContext, Get, Res, HttpCode, HttpException, HttpStatus, Injectable, Module, Post,
   UnauthorizedException, UploadedFile, UseGuards, UseInterceptors, ValidationPipe, CanActivate } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -11,6 +11,9 @@ import { AskDto, CrmDto, DocumentDto } from './dto';
 import { PolicyService } from './policy.service';
 import { CrmService } from './crm.service';
 import { LlmAdapter } from './llm';
+import { createEventStore } from './event-store';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 @Injectable()
 class SignatureGuard implements CanActivate {
@@ -43,6 +46,16 @@ class JsonErrors implements ExceptionFilter {
 class PolicyController {
   constructor(private readonly policies: PolicyService, private readonly crm: CrmService) {}
 
+  @Get() async home(@Res() response: Response) { response.type('html').send(await readFile(join(__dirname, '../public/index.html'), 'utf8')); }
+
+  @Post('samples') async samples() {
+    for (const id of ['motor', 'medical', 'travel', 'home', 'medical-ar']) {
+      const buffer = await readFile(join(__dirname, '../../../samples/policies', `${id}.md`));
+      await this.policies.ingest({ buffer, originalname: `${id}.md` } as Express.Multer.File, id, buffer.toString('utf8').split('\n')[0].replace(/^# /, '').trim());
+    }
+    return { documents: 5 };
+  }
+
   @Get('health') health() { return { status: 'ok' }; }
 
   @Post('documents')
@@ -60,13 +73,14 @@ class PolicyController {
   async webhook(@Body() body: CrmDto) { return this.crm.process(body); }
 }
 
-@Module({ controllers: [PolicyController], providers: [PolicyService, CrmService, LlmAdapter, SignatureGuard] })
+@Module({ controllers: [PolicyController], providers: [PolicyService, CrmService, LlmAdapter, SignatureGuard, { provide: 'EventStore', useFactory: createEventStore }] })
 class AppModule {}
 
 export async function createApp() {
   const app = await NestFactory.create(AppModule, { rawBody: true, logger: false, bodyParser: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalFilters(new JsonErrors());
+  app.enableShutdownHooks();
   await app.init();
   return app;
 }

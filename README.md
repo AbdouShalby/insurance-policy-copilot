@@ -1,123 +1,145 @@
-# Insurance Policy Copilot
+﻿# Insurance Policy Copilot
 
-A local forward-deployed-engineering portfolio project: upload a synthetic insurance policy, retrieve passages, and answer questions with page-level citations. A signed CRM webhook supports idempotent automatic questions. Default extractive answers require no paid services. All sample policies are fictional.
+A forward-deployed engineering portfolio exercise for a synthetic insurance broker: ingest fictional policies, ask questions in English or Arabic, inspect page-level citations, and automate the same workflow through a signed CRM webhook. Extractive mode runs without paid services; the optional LLM adapter is mocked in tests. No real clients, users or production traffic are represented.
+
+```text
+Load sample policies -> Ask a question -> Read answer + mode -> Check source title, page and passage
+```
 
 ```mermaid
 flowchart LR
-    Operator -->|multipart document| API[NestJS API :3000]
-    API -->|multipart| Ingest[FastAPI ingest :8001]
-    Ingest -->|chunks + page + language| API
-    API --> Index[MiniSearch in memory]
-    Index --> Disk[data/index/index.json]
-    CRM -->|raw-body HMAC + event ID| API
-    API --> Dedup[Shared promise per event ID]
-    Dedup --> Index
-    Index --> Answer[Extracted sentences + citations]
-    Index -. optional .-> LLM[Anthropic Messages adapter]
+    Browser[Static demo UI] --> API[NestJS API]
+    CRM -->|HMAC signed event| API
+    API -->|claim / result| Events[Memory or Redis event store]
+    API -->|upload| Ingest[FastAPI + pypdf]
+    Ingest -->|page-aware chunks| Index[MiniSearch + Arabic normalization]
+    API --> Index
+    Index --> Disk[Atomic JSON snapshot]
+    Index --> Answer[Extractive answer + citations]
+    Answer --> Browser
+    API -. optional, explicitly enabled .-> LLM[Anthropic adapter]
 ```
 
-## Install and run
+## Quick start with Docker
 
-Requires Python 3.12+ and Node 20.19+ (NestJS 11 minimum). No Docker or database is needed. Commands use Windows PowerShell from the repository root. Installation requires network access.
+Requires Docker Compose v2. From the repository root in PowerShell:
 
 ```powershell
-cd services/ingest
-python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python -m uvicorn main:app --host 127.0.0.1 --port 8001
+$env:CRM_WEBHOOK_SECRET = 'synthetic-local-demo-only'
+docker compose up --build
 ```
 
-In a second terminal:
+Or bash:
+
+```bash
+export CRM_WEBHOOK_SECRET=synthetic-local-demo-only
+docker compose up --build
+```
+
+Open http://127.0.0.1:3000 and select **Load sample policies**, then **Find answer**. Compose starts private ingest and Redis services, waits for healthchecks, and exposes only the API on localhost. Index and Redis append-only data use named volumes. `docker compose down` stops services while preserving these volumes. Do not remove volumes containing data you need.
+
+## Quick start without Docker
+
+Requires Python 3.12+, Node 20.19+ and npm. Install from the repository root:
 
 ```powershell
+python -m venv services/ingest/.venv
+services/ingest/.venv/Scripts/python -m pip install -r services/ingest/requirements.txt
 cd apps/api
-npm.cmd install
-npm.cmd run build
-$env:CRM_WEBHOOK_SECRET = 'local-demo-only-change-before-client-use'
-# Leave ANTHROPIC_API_KEY unset for free extractive answers.
-npm.cmd start
+npm.cmd ci
+cd ../..
+./scripts/start-local.ps1
 ```
 
-Defaults: API `PORT=3000`, `INGEST_URL=http://localhost:8001`, `INDEX_PATH=data/index/index.json` relative to the API working directory. Environment variables are inherited from the shell. For saved local configuration, copy `.env.example` to `.env` and use `node --env-file=.env dist/main.js` instead of `npm.cmd start`. Ingest's port is controlled by the uvicorn CLI flag. Never commit secrets.
+On Linux/macOS with bash:
 
-## Tests
+```bash
+python3 -m venv services/ingest/.venv
+services/ingest/.venv/bin/python -m pip install -r services/ingest/requirements.txt
+(cd apps/api && npm ci)
+bash scripts/start-local.sh
+```
+
+Each launcher builds the API, starts both services, waits for readiness and loads samples. Ctrl+C stops only its owned services. Defaults use memory for CRM events; set `REDIS_URL` to an already running, isolated Redis instance to use shared results without Docker. The scripts force extractive mode. An occupied port is an error; use `./scripts/start-local.ps1 -ApiPort 13002 -IngestPort 18003`, or `PORT=13002 INGEST_PORT=18003 bash scripts/start-local.sh`. Set a separate `INDEX_PATH` when running another API instance.
+
+For manual service startup, run `.venv/Scripts/python -m uvicorn main:app --host 127.0.0.1 --port 8001` from `services/ingest`, then `npm.cmd start` from `apps/api` after building. Bash uses `.venv/bin/python`. Environment variables are inherited from the shell; `.env` is not loaded automatically. `apps/api/.env.example` documents configuration. If you create `apps/api/.env`, `node --env-file=.env dist/main.js` loads it when run from `apps/api`.
+
+## API reference
+
+| Service | Method / path | Input | Success |
+| --- | --- | --- | --- |
+| API | `GET /` | None | 200, standalone demo HTML |
+| API | `GET /health` | None | 200, responsiveness only |
+| API | `POST /samples` | None | 201, loads/replaces five synthetic policy IDs |
+| API | `POST /documents` | Multipart `file`, `doc_id`, `title` | 201, document ID and chunk count |
+| API | `POST /ask` | JSON `question`, optional `top_k` (default 3) | 201, `answer`, `citations`, `mode` |
+| API | `POST /webhooks/crm` | JSON `event_id`, `case_id`, `customer_question`; `X-Signature` | 200, stored answer with event/case IDs |
+| Ingest | `GET /health` | None | 200, responsiveness |
+| Ingest | `POST /ingest` | Multipart `file`, `doc_id`, `title` | 200, page-aware chunks |
+
+Citations contain `doc_id`, `title`, `page`, `chunk_id`, `snippet`. Questions must be nonblank and at most 2000 characters; `top_k` must be an integer from 1 to 10. API document IDs accept letters, digits, underscores and hyphens. Supported files: UTF-8 `.md`/`.txt`, or text-based `.pdf`, maximum 10 MB. Invalid requests return 400 (ingest validation may return 422), large uploads 413, invalid signatures 401, upstream ingest/LLM failures 502. API errors use `{statusCode, error: {message, ...}}`.
+
+Webhook HMAC-SHA256 covers the exact UTF-8 request bytes using `CRM_WEBHOOK_SECRET`; the header is `sha256=<hex digest>`. Keep event IDs stable on retry. First completed result wins even if the ID is reused with different content. Redis claims use atomic `SET ... NX EX`, owner-checked completion/release, and a seven-day TTL refreshed at completion. Concurrent duplicates poll every 25 ms for up to one second; pending results return 409 with message `processing`. Retry 409, timeouts and 5xx with backoff and jitter. Fix 400/401 before retrying. Failed work releases its claim; crashed workers retain it until expiry. Memory mode loses events on restart.
+
+## Configuration
+
+All API paths are relative to the API working directory unless absolute. The ingest listen address/port are uvicorn CLI options, not environment variables.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HOST` | `127.0.0.1` | API bind address; image sets `0.0.0.0` inside container |
+| `PORT` | `3000` | API listen port |
+| `INGEST_URL` | `http://localhost:8001` | Private ingest base URL |
+| `INDEX_PATH` | `data/index/index.json` | Versioned source-chunk snapshot |
+| `CRM_WEBHOOK_SECRET` | Unset | Unset disables webhook authentication success; compose requires a value |
+| `REDIS_URL` | Unset | Unset selects memory; compose uses `redis://redis:6379` |
+| `CRM_EVENT_TTL_SECONDS` | `604800` | Positive integer retention/claim TTL, both stores |
+| `ANTHROPIC_API_KEY` | Unset | Enables optional paid LLM adapter only when explicitly set |
+| `INGEST_PORT` | `8001` | Bash launcher only; PowerShell uses `-IngestPort` |
+
+## Tests and evaluation
+
+From the repository root, PowerShell:
 
 ```powershell
 cd services/ingest
-.venv\Scripts\python -m pytest -q
+.venv/Scripts/python -m pytest -q -W error
 cd ../../apps/api
 npm.cmd test
 npm.cmd run build
+npm.cmd audit --omit=dev
 cd ../..
-```
-
-API tests use a temporary index and mocked ingest/LLM calls. Python tests generate their own PDF. No tests call paid APIs.
-
-## Curl walkthrough
-
-In a third terminal from the repository root:
-
-If the default ports are occupied, start ingest with a different `--port`, set API `PORT` and `INGEST_URL` accordingly, and change the base URLs below. Use a separate `INDEX_PATH` for an isolated second instance.
-
-```powershell
-$apiBase = 'http://127.0.0.1:3000'
-$ingestBase = 'http://127.0.0.1:8001'
-curl.exe --fail "$ingestBase/health"
-curl.exe --fail "$apiBase/health"
-curl.exe --fail -F "doc_id=motor" -F "title=Fictional motor policy" -F "file=@samples/policies/motor.md" "$apiBase/documents"
-
-$utf8 = [System.Text.UTF8Encoding]::new($false)
-$askPath = Join-Path $env:TEMP 'policy-copilot-ask.json'
-[System.IO.File]::WriteAllText($askPath, '{"question":"What is the windscreen repairs limit?","top_k":3}', $utf8)
-curl.exe --fail -H "Content-Type: application/json" --data-binary "@$askPath" "$apiBase/ask"
-# Expect EGP 5000 and a motor page 1 citation.
-
-$env:CRM_WEBHOOK_SECRET = 'local-demo-only-change-before-client-use'
-$crmPath = Join-Path $env:TEMP 'policy-copilot-crm.json'
-[System.IO.File]::WriteAllText($crmPath, '{"event_id":"demo-001","case_id":"fictional-case-001","customer_question":"What is the windscreen repairs limit?"}', $utf8)
-$hmac = [System.Security.Cryptography.HMACSHA256]::new($utf8.GetBytes($env:CRM_WEBHOOK_SECRET))
-$signature = 'sha256=' + ([System.BitConverter]::ToString($hmac.ComputeHash([System.IO.File]::ReadAllBytes($crmPath))).Replace('-', '').ToLowerInvariant())
-$hmac.Dispose()
-curl.exe --fail -H "Content-Type: application/json" -H "X-Signature: $signature" --data-binary "@$crmPath" "$apiBase/webhooks/crm"
-curl.exe --fail -H "Content-Type: application/json" -H "X-Signature: $signature" --data-binary "@$crmPath" "$apiBase/webhooks/crm"
-# CRM responses are HTTP 200 with identical results and one computation.
-Remove-Item -LiteralPath $askPath, $crmPath
-```
-
-`POST /documents` and `POST /ask` return HTTP 201; successful health/webhook calls return 200. Errors use `{statusCode, error: {message, ...}}`. Invalid signatures return 401 before processing. Questions must be nonblank, at most 2000 characters; `top_k` is an integer from 1 to 10. Document IDs accept letters, numbers, underscore and hyphen.
-
-## End-to-end smoke and eval
-
-With both services running, from the repository root:
-
-```powershell
-$env:CRM_WEBHOOK_SECRET = 'local-demo-only-change-before-client-use'
+$env:CRM_WEBHOOK_SECRET = 'synthetic-local-demo-only'
 services/ingest/.venv/Scripts/python scripts/smoke.py
 services/ingest/.venv/Scripts/python eval/run-eval.py
 ```
 
-The smoke script loads all five synthetic policies, checks a cited answer and signs/replays a CRM event. Eval runs 19 questions (three Arabic, two unknown), prints retrieval hit rate at k=3, not-found accuracy and average latency, and writes `eval/results.md`. Load all samples first. It checks retrieved document/page, not answer correctness. This small lexical fixture is a regression check, not a general RAG benchmark.
+Smoke and eval require running services and extractive mode; smoke loads all samples and tests signed CRM replay. Both support `--api-url http://127.0.0.1:13002`. On bash substitute `.venv/bin/python` and `npm`. CI runs Python 3.12 and Node 20 tests/build, starts services, then smoke and eval without any paid key. Eval exits nonzero below overall hit@3 0.85, not-found accuracy 1.0, or when any response uses LLM mode. It writes `eval/results.md` with language-specific rates.
 
-If default ports are already occupied, start ingest with `--port 8002`, set API `PORT=3001`, `INGEST_URL=http://127.0.0.1:8002` and a separate `INDEX_PATH` before starting it. Adjust `$apiBase`/`$ingestBase` in the curl walkthrough and pass `--api-url http://127.0.0.1:3001` to smoke/eval. Leave existing processes running.
+Recorded phase-two results: 22/22 retrieval hits, Arabic 8/8, English 14/14, unknown questions 2/2. This 24-question fixture measures expected document/page retrieval, not answer correctness. See [verification](docs/verification.md) for evidence and unverified checks.
 
-Run the complete sample loader, signed CRM smoke test and evaluation from the repository root with both services running:
+## Project structure
 
-```powershell
-$env:CRM_WEBHOOK_SECRET = 'local-demo-only-change-before-client-use'
-services/ingest/.venv/Scripts/python scripts/smoke.py
-services/ingest/.venv/Scripts/python eval/run-eval.py
-```
+| Path | Contents |
+| --- | --- |
+| `services/ingest/` | Stateless extraction/chunking service and pytest tests |
+| `apps/api/src/` | API, retrieval, event stores and optional LLM adapter |
+| `apps/api/public/index.html` | Accessible static demo, no build step/CDN |
+| `apps/api/test/` | API, normalizer, memory/Redis fake and concurrency tests |
+| `samples/policies/` | Five fictional English/Arabic policies |
+| `scripts/` | Local launchers and signed smoke test |
+| `eval/` | Questions, standard-library runner and measured results |
+| `docs/` | Architecture, case study, deployment playbook and verification |
+| `.github/workflows/ci.yml` | Tests, build and extractive eval; no deployment |
 
-Both scripts accept `--api-url http://127.0.0.1:<port>` for an alternate API port. The recorded local verification is in [docs/verification.md](docs/verification.md).
+## Decisions and limitations
 
-## Design decisions and limits
+- Lexical retrieval avoids embedding cost and external document transmission. Unicode tokenization, Arabic mark/alef/ya/ta normalization and light prefix stripping improve bilingual matching; they do not provide full morphology or semantic paraphrase search. English tokenization is preserved. Retrieval requires score >= 0.2 and at least half the meaningful query terms to match.
+- Extractive mode selects up to two matching sentences per source chunk; no matching source returns an explicit not-found answer. Citations support human review, not automated coverage decisions.
+- Index snapshots are atomically replaced; re-ingesting a document replaces its chunks. Run one index writer per directory. Shared Redis deduplication does not coordinate index writes or replicate indexes across API instances.
+- Redis is durable only to the degree its persistence/storage is durable. A crash after claim can leave `processing` for the TTL. There is no lease renewal, payload hash, replay-age limit, exactly-once external side effect guarantee, or distributed transaction. Keep processing shorter than TTL.
+- No authentication for UI/upload/ask/sample loading, tenant separation, rate limiting, OCR, or production monitoring. Restrict access; `/samples` replaces its known IDs and is demo-only. Healthchecks do not assert upstream readiness or index freshness.
+- The optional adapter uses contract-specified `claude-sonnet-5-5`; model availability and live grounding remain unverified. With a key, questions/passages leave the process and failures return 502. Activation requires separate cost/data-sharing approval.
+- Local tests/build/eval and compose configuration validation are recorded; container execution, hosted CI and visual browser verification are not claimed. No deployment was performed.
 
-- Ingest is stateless. PDF text is extracted per page; text/Markdown uses page 1. Sentence-aware chunks are at most 900 characters with up to 120 characters of sentence overlap. Short pages remain short; very long sentences split at 850 characters. A simple Arabic-letter heuristic sets language. Empty/unsupported uploads return 400; uploads above 10 MB return 413. Scanned PDFs require OCR outside this phase.
-- MiniSearch provides BM25-style lexical retrieval with Unicode tokenization and basic Arabic normalization. A score floor of 0.2 and a minimum half-query-term overlap reject weak matches after removing stop words. These are heuristics: unsupported questions sharing policy vocabulary may still retrieve passages, and paraphrases may miss. Extractive answers quote matching sentences and append chunk citations.
-- The versioned on-disk JSON stores source chunks; MiniSearch is rebuilt on startup. Writes are serialized and atomically replace the snapshot before publishing to memory. Re-ingestion replaces all chunks for a document ID. A corrupt index fails startup. Use one writer process per index directory.
-- HMAC covers exact raw bytes and uses constant-time digest comparison. A shared promise is installed synchronously before computation, preventing concurrent duplicate work. Failed computations may retry. First successful payload wins for an event ID. The in-memory result map is unbounded and resets on restart; deduplication is not durable.
-- Multi-instance production needs durable event results, Redis `SET NX` leases, completion records and input hashes, plus agreed retention and replay-age controls. Filesystem writes and in-memory locks do not coordinate across instances. See the [client installation playbook](docs/deployment-playbook.md).
-- Optional Anthropic Messages uses `claude-sonnet-5-5` as the contract specifies. No key means no LLM calls. With a key, questions and excerpts are sent and successful answers use `mode: llm`; failures return 502. Tests mock this adapter. Live model availability and generated grounding are unverified. Activation requires cost/data-sharing approval.
-- Services bind to localhost in this walkthrough. This phase has no user authentication, tenant separation, rate limiting, production monitoring or UI. Do not expose it directly or use real client data. No deployment has been performed.
-
-Selected dependencies are from the contract allowlist. NestJS installs required runtime peers, including `reflect-metadata` and `rxjs`, through npm. The Node lockfile records resolved versions; Python uses bounded ranges. Pin and review the Python environment for a client rollout.
+See [architecture](docs/architecture.md), [case study](docs/case-study.md) and [installation playbook](docs/deployment-playbook.md). Licensed under [MIT](LICENSE), copyright Abdelrhman Shalby.

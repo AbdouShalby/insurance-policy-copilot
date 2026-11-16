@@ -1,39 +1,43 @@
-# One-day client installation playbook
+﻿# One-day installation playbook
 
-This is a local portfolio reference using synthetic documents. No client installation or deployment has been performed. Production rollout requires client approval, approved hosting and access controls.
+This is a synthetic portfolio reference, not a completed client deployment. Use only approved fictional data during local verification. Production installation, data changes and paid-model activation require separate approval.
 
-## 09:00 — Confirm scope and prerequisites
+## 09:00 - Agree scope and prerequisites
 
-Identify a technical contact and an insurance reviewer. Agree document versions, languages, retention, data location and questions that must abstain. Install Python 3.12+ and Node 20.19+. Reserve localhost ports 8001 and 3000, a writable persistent index directory and a process supervisor. Start in extractive mode without a paid API key.
+Identify a technical owner and insurance reviewer. Agree languages, document versions, tenant boundaries, retention, data location and abstention examples. Requirements: Docker Compose v2, or Python 3.12+ / Node 20.19+ for native startup. Default ports are API 3000 and ingest 8001. Use restricted TLS access and authentication before network exposure; keep ingest and Redis private. UI, ask, upload and sample loading have no built-in user authentication.
 
-Place TLS and authentication at a restricted reverse proxy before any network exposure. `/documents` and `/ask` have no built-in user authentication; do not expose them directly. Keep ingest private.
+## 10:00 - Install and configure
 
-## 10:00 — Install and configure
+Follow the README quick start and tests. `docker compose up --build` runs ingest, API and Redis with healthchecks. Set `CRM_WEBHOOK_SECRET` in the shell first. API uses Redis in compose, and named volumes retain the source index and Redis append-only data. Only API port 3000 is published on localhost. `docker compose config --quiet` validates the resolved configuration; a valid file does not prove containers run successfully.
 
-Run the README installation and tests. API variables: `PORT`, `INGEST_URL`, `INDEX_PATH`, `CRM_WEBHOOK_SECRET`, optional `ANTHROPIC_API_KEY`. Use `.env.example` as a template, never commit environment files. Start ingest using `uvicorn main:app --host 127.0.0.1 --port 8001`; the CLI flag controls its port.
+Without Docker, install requirements and npm dependencies, then use `scripts/start-local.ps1` or `bash scripts/start-local.sh`. These launch both services, force extractive mode and load synthetic samples. An external `REDIS_URL` selects Redis; otherwise event results are in memory. Do not use sample loading against a real document collection: it replaces the five known sample IDs.
 
-Mount the index on persistent storage with restricted permissions and take an approved backup before replacing documents. Run one API process per index. Verify both `/health` routes. Health indicates responsiveness, not index freshness or upstream readiness.
+Review `apps/api/.env.example` and the README configuration table: `HOST`, `PORT`, `INGEST_URL`, `INDEX_PATH`, `CRM_WEBHOOK_SECRET`, `REDIS_URL`, `CRM_EVENT_TTL_SECONDS`, optional `ANTHROPIC_API_KEY`. The bash launcher also accepts `INGEST_PORT`. The ingest listen port is a uvicorn CLI flag. Shell variables are inherited; `.env` files are not automatically loaded. Default CRM retention is 604800 seconds (seven days).
 
-## 11:00 — Load approved documents
+Use one API index writer per index directory. Multiple instances need independently synchronized indexes or a revised ingestion design; Redis deduplication alone does not make filesystem writes distributed. Back up an approved index before replacement. Check both health routes; API health reports responsiveness, not Redis connectivity or document freshness.
 
-Check approval and text extraction first. Upload each document with a stable `doc_id` and human-readable title. Reusing its ID replaces all previous chunks. Text must be UTF-8; PDFs retain page numbers. Files above 10 MB and scanned PDFs without text are rejected. OCR is outside this phase.
+## 11:00 - Load reviewed documents
 
-Have the insurance reviewer verify known questions, exclusions and unknown questions in each language. Open every cited page. Lexical retrieval misses some paraphrases; extracted answers are review aids, not binding coverage decisions.
+Use `POST /documents` with multipart `file`, stable `doc_id` and `title`. Reusing the ID replaces all its chunks. UTF-8 text uses page 1; PDFs retain source pages. Files above 10 MB, unsupported files and documents without extracted text are rejected. OCR is outside this demo.
 
-## 13:00 — Connect the CRM
+For the local demo only, open `/`, load samples, ask English/Arabic questions and inspect titles/pages/snippets. Verify expected and unsupported questions in each language against the actual source. The fixture's 100% retrieval result does not establish answer correctness for client documents.
 
-Exchange a strong secret through an approved secret channel. Set `CRM_WEBHOOK_SECRET` at both ends without logging it. Send UTF-8 JSON `{event_id, case_id, customer_question}` and header `X-Signature: sha256=<hex HMAC-SHA256>` over the exact transmitted body bytes. Changing whitespace invalidates the signature.
+## 13:00 - Connect CRM with retries
 
-Use one stable unique event ID per logical question. Retry timeouts and 5xx with exponential backoff and jitter using the same ID and body. Fix configuration/payload errors before retrying 400 or 401. First successful result wins even if an ID is reused with changed content. Failed computations are removed for retry.
+Exchange a strong secret via an approved secret channel. Send UTF-8 JSON `{event_id, case_id, customer_question}` with `X-Signature: sha256=<hex HMAC-SHA256>`, signing the exact transmitted bytes. Invalid signatures return 401 before processing. Keep a stable unique event ID and identical payload across retries.
 
-Demo results live in memory until restart; the map has no retention limit. Before production use a durable event-result store and agreed retention. For multiple instances acquire Redis `SET event:<id> processing NX EX <lease>`, persist completion durably, and let duplicates wait/read it. Renew leases and verify lock ownership to prevent stale workers publishing. Store an input hash to detect ID misuse. Add replay-age checks separately: this demo accepts valid captured signatures indefinitely.
+Memory mode loses results on restart. With Redis, atomic `SET ... EX ttl NX` claims an event, owner-checked Lua stores JSON results, and completion refreshes retention. Two API instances sharing Redis cannot both acquire an unexpired claim. A duplicate waits up to one second, reading every 25 ms; it returns the stored result or 409 `processing`. Retry 409, timeouts and 5xx with exponential backoff and jitter. Correct 400/401 before retrying. A failed computation releases its owned claim; a crashed worker can leave processing until expiry. A late worker cannot overwrite a newer claim.
 
-## 15:00 — Verify and monitor
+Agree TTL relative to worst-case processing and business replay expectations. There is no renewal, payload-hash conflict detection, replay-age validation or exactly-once external side effect guarantee. First completed result wins within retention even if an ID is reused with changed content. Redis persistence needs recovery testing; append-only storage reduces restart loss but is not a zero-loss guarantee.
 
-Run the README synthetic walkthrough on an isolated index. Then test approved documents: cited answer, unknown question, invalid signature, exact replay, concurrent duplicates, re-ingestion and restart. Record versions, document IDs and reviewer approval. Eval checks document/page retrieval and not-found responses, not generated answer correctness.
+## 15:00 - Verify and monitor
 
-Monitor request volume, latency, 4xx/5xx, upload rejection, ingest timeout, index write failures, disk space and duplicate/lock counts. Add redacted structured request logs for production; never log raw documents or secrets.
+Run Python/API tests, build, smoke and eval from the README on an isolated index. Test citations, unknown questions, invalid HMAC, exact/concurrent replay, pending 409, failed-work retry, re-ingestion, API restart and Redis restart recovery. Unit concurrency tests use an in-process fake; real Redis and failover need separate verification. CI has no deployment steps and uses extractive mode only.
 
-## 16:00 — Handoff and rollback
+Monitor latency, errors, ingest failures, index age/writes, disk space, Redis connectivity/memory/eviction, pending claims and duplicate rates. Add redacted structured logs without raw policy text or secrets. Record application versions, document versions and reviewer approvals.
 
-Record owners, escalation contacts, update cadence, limitations and rollback approval. Keep the previous application and approved index snapshot. If a release fails, pause CRM retries, stop the index writer, restore the matching application and snapshot, restart, verify citations, then resume traffic. Do not delete backups during rollback. Restart loses demo webhook deduplication; agree replay handling first. Optional LLM activation needs separate approval for cost, data sharing and model availability.
+## 16:00 - Handoff and rollback
+
+Document owners, limitations, escalation and rollback approval. Preserve the previous application/index snapshot and approved Redis backups. For rollback, pause CRM retries, stop the index writer, restore matching application/snapshot, restart, verify sources and event replay, then resume traffic. `docker compose down` preserves named volumes; do not remove data volumes as a rollback shortcut. Memory-mode restart loses deduplication. A Redis format/retention change requires compatibility review before rollout.
+
+Paid model activation needs separate cost/data-sharing approval and live availability checks. No production installation, remote deployment or real-data change was performed under this task.

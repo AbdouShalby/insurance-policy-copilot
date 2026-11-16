@@ -1,13 +1,28 @@
 from io import BytesIO
 
-from fastapi.testclient import TestClient
+import asyncio
+import httpx
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from chunking import chunk_page, detect_language
 from main import MAX_BYTES, app
 
-client = TestClient(app)
+class LocalClient:
+    def request(self, method, path, **kwargs):
+        async def send():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                return await client.request(method, path, **kwargs)
+        return asyncio.run(send())
+
+    def post(self, path, **kwargs):
+        return self.request("POST", path, **kwargs)
+
+    def get(self, path, **kwargs):
+        return self.request("GET", path, **kwargs)
+
+
+client = LocalClient()
 
 
 def upload(content: bytes, filename: str = "policy.txt"):

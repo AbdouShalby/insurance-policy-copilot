@@ -1,0 +1,44 @@
+﻿services:
+  ingest:
+    build:
+      context: .
+      dockerfile: services/ingest/Dockerfile
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports: ["127.0.0.1:3000:3000"]
+    environment:
+      INGEST_URL: http://ingest:8001
+      REDIS_URL: redis://redis:6379
+      CRM_EVENT_TTL_SECONDS: 604800
+      CRM_WEBHOOK_SECRET: ${CRM_WEBHOOK_SECRET:?Set CRM_WEBHOOK_SECRET in your shell}
+      INDEX_PATH: /app/data/index/index.json
+    volumes: ["policy-index:/app/data/index"]
+    depends_on:
+      ingest:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --appendonly, 'yes']
+    volumes: ["crm-events:/data"]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+volumes:
+  policy-index:
+  crm-events:

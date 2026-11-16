@@ -28,6 +28,7 @@ describe('Policy API', () => {
     process.env.INDEX_PATH = join(directory, 'index.json');
     process.env.CRM_WEBHOOK_SECRET = secret;
     delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.REDIS_URL;
     fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(JSON.stringify({ chunks: [chunk] })));
     app = await createApp();
     await upload().expect(201);
@@ -40,6 +41,18 @@ describe('Policy API', () => {
     delete process.env.INDEX_PATH;
     delete process.env.CRM_WEBHOOK_SECRET;
     delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.REDIS_URL;
+  });
+
+  it('serves the static demo page and loads samples through ingest', async () => {
+    const page = await request(app.getHttpServer()).get('/').expect(200).expect('Content-Type', /html/);
+    expect(page.text).toContain('Load sample policies');
+    expect(page.text).toContain('aria-live');
+    fetchMock.mockImplementation(async (_url, options) => {
+      const id = (options.body as FormData).get('doc_id') as string;
+      return new Response(JSON.stringify({ chunks: [{ ...chunk, doc_id: id, chunk_id: `${id}:p1:c1` }] }));
+    });
+    await request(app.getHttpServer()).post('/samples').send({}).expect(201, { documents: 5 });
   });
 
   it('answers with source sentences and citations', async () => {

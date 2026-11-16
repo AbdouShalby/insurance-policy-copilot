@@ -1,0 +1,10 @@
+﻿.git
+_tasks
+**/node_modules
+**/.venv
+**/dist
+**/__pycache__
+**/.env
+**/data
+.cache
+.local

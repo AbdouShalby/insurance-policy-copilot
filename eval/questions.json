@@ -1,4 +1,9 @@
 [
+  {"question": "كم نسبة تحمل الكشف الطبي؟", "expected_doc_id": "medical-ar", "expected_page": 1},
+  {"question": "هل تشمل التغطية المكملات الغذائية؟", "expected_doc_id": "medical-ar", "expected_page": 1},
+  {"question": "ما الأوراق المطلوبة للمطالبة الطبية؟", "expected_doc_id": "medical-ar", "expected_page": 1},
+  {"question": "ما حد تَغْطِيَة النـظارات الطبية؟", "expected_doc_id": "medical-ar", "expected_page": 1},
+  {"question": "هل الاستشارات الهاتفية متاحة طوال اليوم؟", "expected_doc_id": "medical-ar", "expected_page": 1},
   { "question": "What is the collision deductible?", "expected_doc_id": "motor", "expected_page": 1 },
   { "question": "What is the windscreen repairs limit?", "expected_doc_id": "motor", "expected_page": 1 },
   { "question": "What report do theft claims require?", "expected_doc_id": "motor", "expected_page": 1 },

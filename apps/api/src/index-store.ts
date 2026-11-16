@@ -3,14 +3,20 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { Chunk } from './types';
 
-export function tokenize(text: string): string[] {
-  return text.toLowerCase().normalize('NFKC').replace(/[\u064b-\u065f\u0670]/g, '')
-    .replace(/[أإآ]/g, 'ا').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+export function normalizeArabic(text: string): string {
+  return text.replace(/[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه');
 }
 
-const STOP_WORDS = new Set(('a an the is are does do what how when where which can i my me ' +
+export function tokenize(text: string): string[] {
+  return normalizeArabic(text.toLowerCase().normalize('NFKC'))
+    .split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+    .map(token => token.length > 3 ? token.replace(/^(?:وال|بال|كال|فال|لل|ال)(?=[\u0621-\u064a])/u, '') : token);
+}
+
+const STOP_WORDS = new Set(tokenize('a an the is are does do what how when where which can i my me ' +
   'for of to in on and or policy document documents please tell about ' +
-  'ما هل في من عن على هو هي كم ماذا وثيقة الوثيقة').split(' '));
+  'ما هل في من عن على هو هي كم ماذا وثيقة الوثيقة'));
 
 export function contentTerms(text: string): string[] {
   return [...new Set(tokenize(text).filter(term => !STOP_WORDS.has(term)))];
