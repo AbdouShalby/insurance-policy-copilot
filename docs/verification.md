@@ -56,4 +56,4 @@ Run by the lead in headless Chromium against a local build (API on 13101, ingest
 - Desktop 1280px: sample loading, English question, answer with citation (motor policy, page 1). No console errors, no horizontal scroll.
 - Phone 390px: Arabic question "كم نسبة تحمل الكشف الطبي؟" returned the Arabic medical policy (page 1) rendered right-to-left. No console errors, no horizontal scroll.
 - Fix applied during the check: the answer block direction now follows the answer text only, so an English "not found" message is no longer rendered right-to-left after an Arabic question.
-- Known cosmetic issue: extractive answers can start with the markdown heading of the source chunk ("# ...").
+- Fixed after the check: extractive answers no longer start with the markdown heading and repeated title of the source chunk (`readableText`, covered by tests).

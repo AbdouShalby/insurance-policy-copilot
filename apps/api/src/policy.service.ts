@@ -46,7 +46,7 @@ export class PolicyService implements OnModuleInit {
     if (!chunks.length) return { answer: 'Not found in the policy documents.', citations: [], mode: 'extractive' };
     const questionTerms = new Set(contentTerms(question));
     const citations = chunks.map(chunk => {
-      const sentences = chunk.text.split(/(?<=[.!?؟])\s+/u);
+      const sentences = readableText(chunk.text, chunk.title).split(/(?<=[.!?؟])\s+/u);
       const ranked = sentences.map((text, order) => ({ text, order,
         score: tokenize(text).filter(term => questionTerms.has(term)).length }))
         .sort((a, b) => b.score - a.score || a.order - b.order).slice(0, 2)
@@ -61,4 +61,12 @@ export class PolicyService implements OnModuleInit {
     return { answer: citations.map(citation => `${citation.snippet} [${citation.chunk_id}]`).join('\n'),
       citations, mode: 'extractive' };
   }
+}
+
+/** Drops markdown heading markers and a leading repeat of the document title, which the
+ * ingest chunker folds into the first sentence, so answers start with policy text. */
+export function readableText(text: string, title: string): string {
+  let cleaned = text.replace(/(^|\s)#{1,6}\s+/g, '$1').trim();
+  if (title && cleaned.startsWith(title)) cleaned = cleaned.slice(title.length).trim();
+  return cleaned || text;
 }
