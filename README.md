@@ -2,6 +2,12 @@
 
 A forward-deployed engineering portfolio exercise for a synthetic insurance broker: ingest fictional policies, ask questions in English or Arabic, inspect page-level citations, and automate the same workflow through a signed CRM webhook. Extractive mode runs without paid services; the optional LLM adapter is mocked in tests. No real clients, users or production traffic are represented.
 
+## Demo video
+
+A two-minute walkthrough: the client problem, the architecture, English and Arabic answers with page citations, the not-found path, the signed CRM webhook with Redis idempotency, and the CI evaluation gate.
+
+https://github.com/user-attachments/assets/c3a100b8-2756-4beb-813e-0018f17d4c57
+
 ```text
 Load sample policies -> Ask a question -> Read answer + mode -> Check source title, page and passage
 ```
