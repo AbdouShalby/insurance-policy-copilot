@@ -6,7 +6,7 @@
   "outputDirectory": "static",
   "functions": {
     "api/index.js": {
-      "includeFiles": ["demo-index.json", "../../apps/api/dist/**", "../../apps/api/public/index.html"]
+      "includeFiles": "{demo-index.json,../../apps/api/dist/**,../../apps/api/public/index.html}"
     }
   },
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
