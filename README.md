@@ -44,6 +44,21 @@ docker compose up --build
 
 Open http://127.0.0.1:3000 and select **Load sample policies**, then **Find answer**. Compose starts private ingest and Redis services, waits for healthchecks, and exposes only the API on localhost. Index and Redis append-only data use named volumes. `docker compose down` stops services while preserving these volumes. Do not remove volumes containing data you need.
 
+### Run the public demo container locally
+
+```bash
+docker build -f deploy/hf/Dockerfile -t ipc-demo .
+docker run --rm -p 127.0.0.1:7860:7860 -e DEMO_MODE=true ipc-demo
+```
+
+Open http://127.0.0.1:7860. The container runs as uid 1000, starts private ingest, then seeds all five synthetic policies before opening the API port. It forces extractive mode, disables uploads/sample loading/CRM webhooks and uses memory instead of Redis. The writable index is `/home/app/data/index.json`; it is rebuilt at startup. No API key is needed.
+
+Demo questions retain the 2000-character limit and are limited to 20 requests per 60-second window per IP (429 with `Retry-After`). The in-memory limiter resets on restart and caps tracked IPs at 10,000, rejecting new IPs when full. Demo mode trusts exactly one proxy hop: the immediate hosting proxy must append or overwrite `X-Forwarded-For`; arbitrary leftmost entries are ignored. Direct local users can supply that header, so this setting requires a trusted ingress for public hosting. Verify HF's actual header handling before release. This limits ordinary use; it cannot prevent distributed abuse or provide a global quota across replicas.
+
+To prepare a new Space repository folder without publishing: `bash deploy/hf/build-space.sh /path/to/new-space-folder`. Review the generated folder, then build with `docker build -t ipc-demo /path/to/new-space-folder`. Only allowlisted source paths are copied; tests, generated output, dependencies, `.env` files and task contracts are excluded. `deploy/hf/README.md` supplies the Space metadata. Creating or publishing the Space is a separate lead action.
+
+Outside this image, `DEMO_MODE=true` enables the same route guards/UI/limiter; `SEED_SAMPLES_ON_START=true` enables internal seeding before listening. Leave both unset for the existing local workflow.
+
 ## Quick start without Docker
 
 Requires Python 3.12+, Node 20.19+ and npm. Install from the repository root:
