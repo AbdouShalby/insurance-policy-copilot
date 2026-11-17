@@ -1,7 +1,7 @@
 'use strict';
 
 const { execFileSync } = require('node:child_process');
-const { mkdirSync } = require('node:fs');
+const { mkdirSync, writeFileSync } = require('node:fs');
 const { join } = require('node:path');
 
 execFileSync(process.platform === 'win32' ? 'cmd.exe' : 'npm',
@@ -10,3 +10,5 @@ execFileSync(process.platform === 'win32' ? 'cmd.exe' : 'npm',
 });
 // Empty static output: every public route must render through the guarded app.
 mkdirSync(join(__dirname, 'static'), { recursive: true });
+// Vercel rejects an empty output directory; robots.txt does not shadow any app route.
+writeFileSync(join(__dirname, 'static', 'robots.txt'), 'User-agent: *\nAllow: /\n');
