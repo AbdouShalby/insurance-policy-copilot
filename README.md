@@ -161,3 +161,7 @@ Recorded phase-two results: 22/22 retrieval hits, Arabic 8/8, English 14/14, unk
 - Local tests/build/eval and compose configuration validation are recorded; container execution, hosted CI and visual browser verification are not claimed. No deployment was performed.
 
 See [architecture](docs/architecture.md), [case study](docs/case-study.md) and [installation playbook](docs/deployment-playbook.md). Licensed under [MIT](LICENSE), copyright Abdelrhman Shalby.
+
+## How this was built
+
+I scoped the client problem and owned the design decisions, the acceptance criteria and the review. Claude Code planned the work with me and reviewed every change; Codex implemented most of the code against written task contracts. The demo voiceover is AI-generated from my own voice.
