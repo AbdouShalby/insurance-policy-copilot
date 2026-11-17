@@ -27,7 +27,7 @@ export class IndexStore {
   private chunks: Chunk[] = [];
   private writes: Promise<void> = Promise.resolve();
 
-  constructor(private readonly path: string) {}
+  constructor(private readonly path: string, private readonly readOnly = process.env.INDEX_READ_ONLY === 'true') {}
 
   private createIndex(): MiniSearch<Chunk> {
     return new MiniSearch<Chunk>({ idField: 'chunk_id', fields: ['text', 'title'],
@@ -36,15 +36,21 @@ export class IndexStore {
 
   async load(): Promise<void> {
     try {
-      const saved = JSON.parse(await readFile(this.path, 'utf8')) as { chunks: Chunk[] };
+      const saved = JSON.parse(await readFile(this.path, 'utf8')) as { version: number; chunks: Chunk[] };
+      if (this.readOnly && (saved.version !== 1 || !Array.isArray(saved.chunks) || !saved.chunks.length ||
+        saved.chunks.some(chunk => !chunk || typeof chunk.doc_id !== 'string' || !chunk.doc_id ||
+          typeof chunk.chunk_id !== 'string' || !chunk.chunk_id || typeof chunk.title !== 'string' ||
+          typeof chunk.text !== 'string' || !chunk.text || !Number.isInteger(chunk.page) || chunk.page < 1 ||
+          !['ar', 'en'].includes(chunk.lang)))) throw new Error('Invalid read-only index');
       this.index.addAll(saved.chunks);
       this.chunks = saved.chunks;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if (this.readOnly || (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
   }
 
   async replace(docId: string, chunks: Chunk[]): Promise<void> {
+    if (this.readOnly) throw new Error('Index is read-only');
     const work = this.writes.then(async () => {
       const next = this.chunks.filter(chunk => chunk.doc_id !== docId).concat(chunks);
       const nextIndex = this.createIndex();

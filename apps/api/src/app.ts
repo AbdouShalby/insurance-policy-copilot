@@ -129,6 +129,7 @@ export async function createApp() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalFilters(new JsonErrors());
   app.enableShutdownHooks();
-  await app.init();
+  try { await app.init(); }
+  catch (error) { await app.close(); throw error; }
   return app;
 }

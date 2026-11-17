@@ -59,6 +59,12 @@ To prepare a new Space repository folder without publishing: `bash deploy/hf/bui
 
 Outside this image, `DEMO_MODE=true` enables the same route guards/UI/limiter; `SEED_SAMPLES_ON_START=true` enables internal seeding before listening. Leave both unset for the existing local workflow.
 
+### Public demo on Vercel
+
+The serverless profile uses a committed read-only index of the five synthetic policies; no Python, Redis or LLM runs on Vercel. After building the API, regenerate it locally with `services/ingest/.venv/Scripts/python.exe scripts/build-demo-index.py` and verify deterministic output with the same command plus `--check`. Run `node deploy/vercel/smoke.js` to exercise the exported function without Vercel login.
+
+The lead can deploy with `npx.cmd vercel deploy` from the repository root after configuring Root Directory `deploy/vercel`, enabling source files outside that directory, and selecting the exact build/output settings in [the Vercel profile](deploy/vercel/README.md). Its configuration, adapter, proxy documentation and local verification commands live there. Publishing and hosted verification are separate lead actions; no deployment is claimed.
+
 ## Quick start without Docker
 
 Requires Python 3.12+, Node 20.19+ and npm. Install from the repository root:
