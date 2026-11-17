@@ -2,6 +2,8 @@
 
 A forward-deployed engineering portfolio exercise for a synthetic insurance broker: ingest fictional policies, ask questions in English or Arabic, inspect page-level citations, and automate the same workflow through a signed CRM webhook. Extractive mode runs without paid services; the optional LLM adapter is mocked in tests. No real clients, users or production traffic are represented.
 
+**Try it live:** [insurance-policy-copilot-ten.vercel.app](https://insurance-policy-copilot-ten.vercel.app/) (read-only public demo: the real NestJS API on a prebuilt synthetic index; ask in English or Arabic and check the cited page. Uploads, the CRM webhook and Redis run locally, not in the public demo.)
+
 ## Demo video
 
 A two-minute walkthrough: the client problem, the architecture, English and Arabic answers with page citations, the not-found path, the signed CRM webhook with Redis idempotency, and the CI evaluation gate.
